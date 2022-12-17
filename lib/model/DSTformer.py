@@ -9,6 +9,17 @@ from functools import partial
 from itertools import repeat
 from lib.model.drop import DropPath
 
+class Scale(nn.Module):
+    """
+    Scale vector by element multiplications.
+    """
+    def __init__(self, dim, init_value=1.0, trainable=True):
+        super().__init__()
+        self.scale = nn.Parameter(init_value * torch.ones(dim), requires_grad=trainable)
+
+    def forward(self, x):
+        return x * self.scale
+
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     # Cut & paste from PyTorch official master until it's in a few official releases - RW
     # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
@@ -199,7 +210,7 @@ class Attention(nn.Module):
         x = x.permute(0, 3, 2, 1, 4).reshape(B, N, C*self.num_heads)
         return x
 
-    def count_attn(self, attn):
+    def count_attn(self, attn): #
         attn = attn.detach().cpu().numpy()
         attn = attn.mean(axis=1)
         attn_t = attn[:, :, 1].mean(axis=1)
@@ -214,7 +225,8 @@ class Attention(nn.Module):
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., mlp_out_ratio=1., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, st_mode='stage_st', att_fuse=False):
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, st_mode='stage_st', att_fuse=False, 
+                 res_scale_init_value=None, layer_scale_init_value=None):
         super().__init__()
         # assert 'stage' in st_mode
         self.st_mode = st_mode
@@ -236,22 +248,38 @@ class Block(nn.Module):
         self.att_fuse = att_fuse
         if self.att_fuse:
             self.ts_attn = nn.Linear(dim*2, dim*2)
+
+        # Res_scale in MetaFormer https://arxiv.org/pdf/2210.13452.pdf   First from NormFormer
+        '''res_scale_init_values (list, tuple, float or None): Init value for Layer Scale. Default: [None, None, 1.0, 1.0].
+            None means not use the layer scale. From: https://arxiv.org/abs/2110.09456.'''
+        self.res_scale1 = Scale(dim=dim, init_value=res_scale_init_value) \
+            if res_scale_init_value else nn.Identity()
+        self.res_scale2 = Scale(dim=dim, init_value=res_scale_init_value) \
+            if res_scale_init_value else nn.Identity()
+        # Layer_scale in MetaFormer https://arxiv.org/pdf/2210.13452.pdf   First from CaiT
+        '''layer_scale_init_values (list, tuple, float or None): Init value for Layer Scale. Default: None.
+            None means not use the layer scale. Form: https://arxiv.org/abs/2103.17239.'''
+        self.layer_scale1 = Scale(dim=dim, init_value=layer_scale_init_value) \
+            if layer_scale_init_value else nn.Identity()
+        self.layer_scale2 = Scale(dim=dim, init_value=layer_scale_init_value) \
+            if layer_scale_init_value else nn.Identity()
+        
     def forward(self, x, seqlen=1):
         if self.st_mode=='stage_st':
-            x = x + self.drop_path(self.attn_s(self.norm1_s(x), seqlen))
-            x = x + self.drop_path(self.mlp_s(self.norm2_s(x)))
-            x = x + self.drop_path(self.attn_t(self.norm1_t(x), seqlen))
-            x = x + self.drop_path(self.mlp_t(self.norm2_t(x)))
+            x = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_s(self.norm1_s(x), seqlen)))
+            x = self.res_scale2(x) + self.layer_scale2(self.drop_path(self.mlp_s(self.norm2_s(x))))
+            x = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_t(self.norm1_t(x), seqlen)))
+            x = self.res_scale2(x) + self.layer_scale2(self.drop_path(self.mlp_t(self.norm2_t(x))))
         elif self.st_mode=='stage_ts':
-            x = x + self.drop_path(self.attn_t(self.norm1_t(x), seqlen))
-            x = x + self.drop_path(self.mlp_t(self.norm2_t(x)))
-            x = x + self.drop_path(self.attn_s(self.norm1_s(x), seqlen))
-            x = x + self.drop_path(self.mlp_s(self.norm2_s(x)))
+            x = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_t(self.norm1_t(x), seqlen)))
+            x = self.res_scale2(x) + self.layer_scale2(self.drop_path(self.mlp_t(self.norm2_t(x))))
+            x = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_s(self.norm1_s(x), seqlen)))
+            x = self.res_scale2(x) + self.layer_scale2(self.drop_path(self.mlp_s(self.norm2_s(x))))
         elif self.st_mode=='stage_para':
-            x_t = x + self.drop_path(self.attn_t(self.norm1_t(x), seqlen))
-            x_t = x_t + self.drop_path(self.mlp_t(self.norm2_t(x_t)))
-            x_s = x + self.drop_path(self.attn_s(self.norm1_s(x), seqlen))
-            x_s = x_s + self.drop_path(self.mlp_s(self.norm2_s(x_s)))
+            x_t = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_t(self.norm1_t(x), seqlen)))
+            x_t = self.res_scale2(x_t) + self.layer_scale2(self.drop_path(self.mlp_t(self.norm2_t(x_t))))
+            x_s = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_s(self.norm1_s(x), seqlen)))
+            x_s = self.res_scale2(x_s) + self.layer_scale2(self.drop_path(self.mlp_s(self.norm2_s(x_s))))
             if self.att_fuse:
                 #             x_s, x_t: [BF, J, dim]
                 alpha = torch.cat([x_s, x_t], dim=-1)
@@ -270,7 +298,8 @@ class DSTformer(nn.Module):
     def __init__(self, dim_in=3, dim_out=3, dim_feat=256, dim_rep=512,
                  depth=5, num_heads=8, mlp_ratio=4, 
                  num_joints=17, maxlen=243, 
-                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, att_fuse=True):
+                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, att_fuse=True, 
+                 res_scale_init_values=None, layer_scale_init_values=None):
         super().__init__()
         self.dim_out = dim_out
         self.dim_feat = dim_feat
@@ -281,12 +310,14 @@ class DSTformer(nn.Module):
             Block(
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
                 st_mode="stage_st")
             for i in range(depth)])
         self.blocks_ts = nn.ModuleList([
             Block(
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
                 st_mode="stage_ts")
             for i in range(depth)])
         self.norm = norm_layer(dim_feat)

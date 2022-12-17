@@ -38,9 +38,26 @@ python train.py \
 ```bash
 python train.py \
 --config configs/pose3d/MB_train_h36m.yaml \
---evaluate checkpoint/pose3d/MB_train_h36m/best_epoch.bin         
+--evaluate checkpoint/pose3d/MB_train_h36m_best_epoch.bin         
 ```
 
+**遇到问题**
+```bash
+Traceback (most recent call last):
+  File "train.py", line 378, in <module>
+    train_with_config(args, opts)
+  File "train.py", line 326, in train_with_config
+    train_epoch(args, model_pos, train_loader_3d, losses, optimizer, has_3d=True, has_gt=True) 
+  File "train.py", line 154, in train_epoch
+    for idx, (batch_input, batch_gt) in tqdm(enumerate(train_loader)):    
+  File "/home/ytwang/anaconda3/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 349, in __iter__
+    self._iterator._reset(self)
+  File "/home/ytwang/anaconda3/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 852, in _reset
+    data = self._get_data()
+  File "/home/ytwang/anaconda3/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1029, in _get_data
+    raise RuntimeError('Pin memory thread exited unexpectedly')
+RuntimeError: Pin memory thread exited unexpectedly
+```
 
 
 

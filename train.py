@@ -1,4 +1,5 @@
 import os
+# os.environ['CUDA_VISIBLE_DEVICES']='4,5,6,7'
 import numpy as np
 import argparse
 import errno
@@ -214,7 +215,7 @@ def train_with_config(args, opts):
           'batch_size': args.batch_size,
           'shuffle': True,
           'num_workers': 12,
-          'pin_memory': True,
+          'pin_memory': False, #True
           'prefetch_factor': 4,
           'persistent_workers': True
     }
@@ -223,7 +224,7 @@ def train_with_config(args, opts):
           'batch_size': args.batch_size,
           'shuffle': False,
           'num_workers': 12,
-          'pin_memory': True,
+          'pin_memory': False, #True
           'prefetch_factor': 4,
           'persistent_workers': True
     }

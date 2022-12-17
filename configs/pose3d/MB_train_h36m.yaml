@@ -21,6 +21,8 @@ depth: 5
 dim_rep: 512
 num_heads: 8
 att_fuse: True
+res_scale_init_values: [1.0, 1.0, 1.0, 1.0, 1.0]
+layer_scale_init_values: [null, null, null, null, null]
 
 # Data
 data_root: data/motion3d/MB3D_f243s81/
