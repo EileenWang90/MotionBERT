@@ -156,13 +156,13 @@ class Attention(nn.Module):
         self.attn_count_s = None
         self.attn_count_t = None
 
-    def forward(self, x, seqlen=1):
-        B, N, C = x.shape
+    def forward(self, x, seqlen=1):  # x.shape (BF, J, dim_feat)?
+        B, N, C = x.shape  # B=BF, N=J, C=dim_feat
         
         if self.mode == 'series':
-            qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-            q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
-            x = self.forward_spatial(q, k, v)
+            qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)  #(3, B, self.num_heads, N, C // self.num_heads)
+            q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple) 
+            x = self.forward_spatial(q, k, v)  # (B, self.num_heads, N, C // self.num_heads) 即 (BF, self.num_heads, J, dim_feat // self.num_heads)
             qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
             q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
             x = self.forward_temporal(q, k, v, seqlen=seqlen)
@@ -181,7 +181,7 @@ class Attention(nn.Module):
             qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
             q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
             x = self.forward_coupling(q, k, v, seqlen=seqlen)
-        elif self.mode == 'vanilla':
+        elif self.mode == 'vanilla':  # 也即 'spatial'
             qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
             q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
             x = self.forward_spatial(q, k, v)
@@ -226,7 +226,7 @@ class Attention(nn.Module):
         return x
 
     def forward_spatial(self, q, k, v):
-        B, _, N, C = q.shape
+        B, _, N, C = q.shape  # (B, self.num_heads, N, C // self.num_heads) 即 (BF, self.num_heads, J, dim_feat // self.num_heads)
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
@@ -236,9 +236,9 @@ class Attention(nn.Module):
         return x
         
     def forward_temporal(self, q, k, v, seqlen=8):
-        B, _, N, C = q.shape
-        qt = q.reshape(-1, seqlen, self.num_heads, N, C).permute(0, 2, 3, 1, 4) #(B, H, N, T, C)
-        kt = k.reshape(-1, seqlen, self.num_heads, N, C).permute(0, 2, 3, 1, 4) #(B, H, N, T, C)
+        B, _, N, C = q.shape  # (B, self.num_heads, N, C // self.num_heads) 即 (BF, self.num_heads, J, dim_feat // self.num_heads)
+        qt = q.reshape(-1, seqlen, self.num_heads, N, C).permute(0, 2, 3, 1, 4) #(B, H, N, T, C)  (B, F, self.num_heads, J, dim_feat // self.num_heads)->(B, self.num_heads, J, F,  dim_feat // self.num_heads)
+        kt = k.reshape(-1, seqlen, self.num_heads, N, C).permute(0, 2, 3, 1, 4) #(B, H, N, T, C)  N=head, N=joints, C=dim_feat // self.num_heads
         vt = v.reshape(-1, seqlen, self.num_heads, N, C).permute(0, 2, 3, 1, 4) #(B, H, N, T, C)
 
         attn = (qt @ kt.transpose(-2, -1)) * self.scale
@@ -246,7 +246,7 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         x = attn @ vt #(B, H, N, T, C)
-        x = x.permute(0, 3, 2, 1, 4).reshape(B, N, C*self.num_heads)
+        x = x.permute(0, 3, 2, 1, 4).reshape(B, N, C*self.num_heads)  # (B, N, dim_feat) dim_feat=C*self.num_heads 即 (BF, J, dim_feat)
         return x
 
     def count_attn(self, attn): #
@@ -269,7 +269,7 @@ class Block(nn.Module):
         super().__init__()
         # assert 'stage' in st_mode
         self.st_mode = st_mode
-        self.norm1_s = norm_layer(dim)
+        self.norm1_s = norm_layer(dim)  # dim=dim_feat
         self.norm1_t = norm_layer(dim)
         self.attn_s = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, st_mode="spatial")
@@ -310,7 +310,7 @@ class Block(nn.Module):
         self.layer_scale2 = Scale(dim=dim, init_value=layer_scale_init_value) \
             if layer_scale_init_value else nn.Identity()
         
-    def forward(self, x, seqlen=1):
+    def forward(self, x, seqlen=1):  # x.shape (BF, J, dim_feat)
         if self.st_mode=='stage_st':
             x = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_s(self.norm1_s(x), seqlen)))
             x = self.res_scale2(x) + self.layer_scale2(self.drop_path(self.mlp_s(self.norm2_s(x))))
@@ -326,7 +326,8 @@ class Block(nn.Module):
             x_t = self.res_scale2(x_t) + self.layer_scale2(self.drop_path(self.mlp_t(self.norm2_t(x_t))))
             x_s = self.res_scale1(x) + self.layer_scale1(self.drop_path(self.attn_s(self.norm1_s(x), seqlen)))
             x_s = self.res_scale2(x_s) + self.layer_scale2(self.drop_path(self.mlp_s(self.norm2_s(x_s))))
-            if self.att_fuse:
+            # 每经过 st+ts 就fuse，fuse后继续分成两个分支计算st和ts
+            if self.att_fuse: 
                 #             x_s, x_t: [BF, J, dim]
                 alpha = torch.cat([x_s, x_t], dim=-1)
                 BF, J = alpha.shape[:2]
@@ -411,19 +412,19 @@ class DSTformer(nn.Module):
 
     def forward(self, x, return_rep=False):   
         B, F, J, C = x.shape
-        x = x.reshape(-1, J, C)
+        x = x.reshape(-1, J, C)  # (BF, J, C)=(BF, J, dim_in)   C = dim_in
         BF = x.shape[0]
-        x = self.joints_embed(x)
-        x = x + self.pos_embed
-        _, J, C = x.shape
-        x = x.reshape(-1, F, J, C) + self.temp_embed[:,:F,:,:]
-        x = x.reshape(BF, J, C)
-        x = self.pos_drop(x)
+        x = self.joints_embed(x)  # (BF, J, dim_feat)
+        x = x + self.pos_embed  # (BF, J, dim_feat) = (BF, J, dim_feat) + (1, J, dim_feat)  broadcast
+        _, J, C = x.shape  # C = dim_feat
+        x = x.reshape(-1, F, J, C) + self.temp_embed[:,:F,:,:]  # (B, F, J, dim_feat) = (B, F, J, dim_feat) + (1, F, 1, dim_feat)
+        x = x.reshape(BF, J, C)  # (BF, J, dim_feat)
+        x = self.pos_drop(x)  # dropout
         alphas = []
         for idx, (blk_st, blk_ts) in enumerate(zip(self.blocks_st, self.blocks_ts)):
             x_st = blk_st(x, F)
             x_ts = blk_ts(x, F)
-            if self.att_fuse:
+            if self.att_fuse:  # 所有模块走完再fuse，即(st-st-st-st-st)+(ts-ts-ts-ts-ts)后fuse
                 att = self.ts_attn[idx]
                 alpha = torch.cat([x_st, x_ts], dim=-1)
                 BF, J = alpha.shape[:2]

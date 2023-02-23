@@ -1,5 +1,6 @@
 import os
-# os.environ['CUDA_VISIBLE_DEVICES']='4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES']='2,3,4,5,6,7'
+# os.environ["CUDA_VISIBLE_DEVICES"]='-1'  # Disable GPU  
 import numpy as np
 import argparse
 import errno
@@ -17,11 +18,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+# from torchsummary import summary  # paras
+from torchsummaryX import summary  # enhanced edition 
+# from torchinfo import summary  
+from torchstat import stat
 
 from lib.utils.tools import *
 from lib.utils.learning import *
 from lib.utils.learning import load_backbone
 from lib.utils.utils_data import flip_data
+# from lib.utils.torchstat_utils import model_stats #测试模型计算量
+from thop import profile
+
 from lib.data.dataset_motion_2d import PoseTrackDataset2D, InstaVDataset2D
 from lib.data.dataset_motion_3d import MotionDataset3D
 from lib.data.augmentation import Augmenter2D
@@ -40,6 +48,7 @@ def parse_args():
     parser.add_argument('-r', '--resume', default='', type=str, metavar='FILENAME', help='checkpoint to resume (file name)')
     parser.add_argument('-e', '--evaluate', default='', type=str, metavar='FILENAME', help='checkpoint to evaluate (file name)')
     parser.add_argument('-ms', '--selection', default='latest_epoch.bin', type=str, metavar='FILENAME', help='checkpoint to finetune (file name)')
+    # parser.add_argument('-i', '--intermediate', default=False, dest='intermediate', type=bool, action='store_true', help='intermediate supervision')
     opts = parser.parse_args()
     return opts
 
@@ -73,8 +82,7 @@ def evaluate(args, model_pos, test_loader, datareader):
             else:
                 predicted_3d_pos = model_pos(batch_input)
             if args.rootrel:
-                predicted_3d_pos[:,:,0,:] = 0     # [N,T,17,3]
-
+                predicted_3d_pos[:,:,0,:] = 0     # [N,T,17,3]             
             if args.gt_2d:
                 predicted_3d_pos[...,:2] = batch_input[...,:2]
             results_all.append(predicted_3d_pos.cpu().numpy())
@@ -171,6 +179,9 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
         optimizer.zero_grad()
         if has_3d:
             loss_3d_pos = loss_mpjpe(predicted_3d_pos, batch_gt)
+            # w-mpjpe
+            # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
+            # loss_3d_pos = weighted_mpjpe(predicted_3d_pos, batch_gt, w_mpjpe)
             loss_3d_scale = n_mpjpe(predicted_3d_pos, batch_gt)
             loss_3d_velocity = loss_velocity(predicted_3d_pos, batch_gt)
             loss_lv = loss_limb_var(predicted_3d_pos)
@@ -252,6 +263,23 @@ def train_with_config(args, opts):
     if torch.cuda.is_available():
         model_backbone = nn.DataParallel(model_backbone)
         model_backbone = model_backbone.cuda()
+
+    ## count model parameters
+    # summary(model_backbone, input_size=(9, 17, 3))  # torchsummary (BF, J, dim) (NT, 17, 3)
+    # inputs = torch.zeros(1, 9, 17, 3) #.cuda()  # [length, batch_size] 
+    # summary(model_backbone, inputs)  # torchsummaryX  目前会出错
+    # summary(model_backbone, input_size=(1, 9, 17, 3))  # torchinfo (BF, J, dim) (NT, 17, 3) not accuracy
+    
+    ## count model complexity
+    # df = model_stats(model_backbone, (9, 17, 3)) # have bugs. ImportError: cannot import name 'analyze' from 'torchstat'
+    # print(df)
+    # input_joints = torch.randn(1, 9, 17, 3)
+    # flops, params = profile(model_backbone, inputs=(input_joints,)) #thop.profile
+    # print('INFO: FLOPs: ', flops)
+    # print('INFO: Params:', params)
+    # '''INFO: FLOPs:  308036736.0 这不对呀。。
+    # INFO: Params: 2019853.0'''
+    # input("Stop Here.")
 
     if args.finetune:
         if opts.resume or opts.evaluate:
