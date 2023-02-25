@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES']='2,3,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES']='0,2,3,5,6,7' # '1,3' '2,3,4,5,6,7'
 # os.environ["CUDA_VISIBLE_DEVICES"]='-1'  # Disable GPU  
 import numpy as np
 import argparse
@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument('-r', '--resume', default='', type=str, metavar='FILENAME', help='checkpoint to resume (file name)')
     parser.add_argument('-e', '--evaluate', default='', type=str, metavar='FILENAME', help='checkpoint to evaluate (file name)')
     parser.add_argument('-ms', '--selection', default='latest_epoch.bin', type=str, metavar='FILENAME', help='checkpoint to finetune (file name)')
-    # parser.add_argument('-i', '--intermediate', default=False, dest='intermediate', type=bool, action='store_true', help='intermediate supervision')
+    # parser.add_argument('-i', '--intermediate', default=False, dest='intermediate', type=bool, action='store_true', help='intermediate supervision')  # in yaml file
     opts = parser.parse_args()
     return opts
 

@@ -11,7 +11,8 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--config", "configs/pose3d/MB_train_h36m.yaml","--evaluate", "checkpoint/pose3d/MB_train_h36m_best_epoch.bin"]
+            "args": ["--config", "configs/pose3d/MB_train_h36m_f9s3_seqsstt.yaml","--evaluate", "checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/best_epoch.bin"]
+            // --config configs/pose3d/MB_train_h36m_f9s3_seqsstt.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/best_epoch.bin
         }
     ]
 }

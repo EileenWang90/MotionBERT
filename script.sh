@@ -5,11 +5,22 @@
 python train.py --config configs/pose3d/MB_train_h36m.yaml --resume checkpoint/pose3d/MB_train_h36m/latest_epoch.bin --checkpoint checkpoint/pose3d/MB_train_h36m |& tee train_scratch.log
 python train.py --config configs/pose3d/MB_ft_h36m.yaml --pretrained checkpoint/pretrain/ --checkpoint checkpoint/pose3d/FT_MB_release_MB_ft_h36m |& tee train_finetune.log
 
-# 2023.02.22 6 2080Ti bz2048 显存6637M 一个epoch3分钟，120个epoch大概6小时  会自动续上latest_epoch
+# 2023.02.22 6 2080Ti bs2048 显存6637M 一个epoch3分钟，120个epoch大概6小时  会自动续上latest_epoch
 python train.py --config configs/pose3d/MB_train_h36m_f9s3.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_para |& tee train_f9s3_para1.log
 python train.py --config configs/pose3d/MB_train_h36m_f9s3.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_para/best_epoch.bin  # evaluate latest_epoch.bin
 # 可以调一下 dropout的大小，目前没有dropout
-
+# 2023.02.23 2 V100 bs2048应该是总bs 显存16430M 一个epoch3分钟，120个epoch大概6小时 比较差
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqst |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst/train_f9s3_seqst.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqst/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst/test_f9s3_seqst.log 
+# 2023.02.23 2 V100 bs2048 显存16430M 一个epoch3分钟，120个epoch大概6小时 
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqts.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqts |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqts/train_f9s3_seqts.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqts.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqts/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqts/test_f9s3_seqts.log 
+# 2023.02.23 2 V100 bs2048 显存16430M 一个epoch3分钟，120个epoch大概6小时
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqttss.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqttss |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqttss/train_f9s3_seqttss.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqttss.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqttss/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqttss/test_f9s3_seqttss.log 
+# 2023.02.23 2 V100 bs2048 显存16430M 一个epoch3分钟，120个epoch大概6小时 比较差
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqsstt.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/train_f9s3_seqsstt.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqsstt.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/test_f9s3_seqsstt.log 
 
 # test
 python train.py --config configs/pose3d/MB_ft_h36m.yaml --evaluate checkpoint/pose3d/FT_MB_release_MB_ft_h36m/best_epoch.bin |& tee test_finetune.log
