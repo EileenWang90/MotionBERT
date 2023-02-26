@@ -362,7 +362,7 @@ class DSTformer(nn.Module):
                  num_joints=17, maxlen=243, 
                  qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, att_fuse=True, 
                  res_scale_init_values=None, layer_scale_init_values=None, 
-                 intermediate=False, run_mode="para"):  # st_mode1="stage_st", st_mode2="stage_ts",
+                 intermediate=False, run_mode="train", branch_size=5, cho_branch=0):  # st_mode1="stage_st", st_mode2="stage_ts",
         super().__init__()
         self.dim_out = dim_out
         self.dim_feat = dim_feat
@@ -370,21 +370,65 @@ class DSTformer(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.run_mode = run_mode
-        self.st_mode0 = mode_map[self.run_mode][0]
-        self.st_mode1 = mode_map[self.run_mode][1]
-        self.blocks0 = nn.ModuleList([
+        self.branch_size =branch_size
+        self.cho_branch = cho_branch
+        # self.st_mode0 = mode_map[self.run_mode][0]
+        # self.st_mode1 = mode_map[self.run_mode][1]
+        self.blocks_paras = nn.ModuleList([
             Block(
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
                 res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode=self.st_mode0)
+                st_mode="stage_s")
             for i in range(depth)])
-        self.blocks1 = nn.ModuleList([
+        self.blocks_parat = nn.ModuleList([
             Block(
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
                 res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode=self.st_mode1)
+                st_mode="stage_t")
+            for i in range(depth)])
+        self.blocks_st = nn.ModuleList([
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                st_mode="stage_st")
+            for i in range(depth)])
+        self.blocks_ts = nn.ModuleList([
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                st_mode="stage_ts")
+            for i in range(depth)])
+        self.blocks_sstt1 = nn.ModuleList([
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                st_mode="stage_s")
+            for i in range(depth)])
+        self.blocks_sstt2 = nn.ModuleList([
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                st_mode="stage_t")
+            for i in range(depth)])
+        self.blocks_ttss1 = nn.ModuleList([
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                st_mode="stage_t")
+            for i in range(depth)])
+        self.blocks_ttss2 = nn.ModuleList([
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                st_mode="stage_s")
             for i in range(depth)])
         self.norm = norm_layer(dim_feat)
         if dim_rep:
@@ -402,10 +446,15 @@ class DSTformer(nn.Module):
         self.apply(self._init_weights)
         self.att_fuse = att_fuse
         if self.att_fuse:
-            self.ts_attn = nn.ModuleList([nn.Linear(dim_feat*2, 2) for i in range(depth)])
+            # only for para branch
+            self.para_attn = nn.ModuleList([nn.Linear(dim_feat*2, 2) for i in range(depth)])
             for i in range(depth):
-                self.ts_attn[i].weight.data.fill_(0)
-                self.ts_attn[i].bias.data.fill_(0.5)
+                self.para_attn[i].weight.data.fill_(0)
+                self.para_attn[i].bias.data.fill_(0.5)
+            # for all branches
+            self.branch_attn = nn.Linear(dim_feat*self.branch_size, self.branch_size)
+            self.branch_attn.weight.data.fill_(0)
+            self.branch_attn.bias.data.fill_(0.5)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -418,6 +467,18 @@ class DSTformer(nn.Module):
 
     def get_classifier(self):
         return self.head
+    
+    def set_run_mode(self, run_mode="train", cho_branch=0):
+        if run_mode=="train":
+            self.run_mode = "train"
+        elif run_mode=="eval":
+            self.run_mode = "eval"
+            if cho_branch >= 0 and cho_branch <=self.branch_size:
+                self.cho_branch = cho_branch
+            else:
+                raise NotImplementedError(self.cho_branch)
+        else:
+            raise NotImplementedError(self.run_mode)  
 
     def reset_classifier(self, dim_out, global_pool=''):
         self.dim_out = dim_out
@@ -433,29 +494,96 @@ class DSTformer(nn.Module):
         x = x.reshape(-1, F, J, C) + self.temp_embed[:,:F,:,:]  # (B, F, J, dim_feat) = (B, F, J, dim_feat) + (1, F, 1, dim_feat)
         x = x.reshape(BF, J, C)  # (BF, J, dim_feat)
         x = self.pos_drop(x)  # dropout
-        alphas = []
-        for idx, (blk0, blk1) in enumerate(zip(self.blocks0, self.blocks1)):
-            if self.run_mode=="para": # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"
-                x_st = blk0(x, F)
-                x_ts = blk1(x, F)
-                if self.att_fuse:  # 所有模块走完再fuse，即(st-st-st-st-st)+(ts-ts-ts-ts-ts)后fuse
-                    att = self.ts_attn[idx]
-                    alpha = torch.cat([x_st, x_ts], dim=-1)
+
+        if self.run_mode == "train" or self.cho_branch == 0 : # if self.cho_branch==0 and self.run_mode=="eval"
+            # 5 branch: "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"
+            # branch1 para
+            x1 = x.clone()
+            x2 = x.clone()
+            x3 = x.clone()
+            x4 = x.clone()
+            x5 = x.clone()
+            for idx, (blk0, blk1) in enumerate(zip(self.blocks_paras, self.blocks_parat)):
+                x_s = blk0(x1, F)
+                x_t = blk1(x1, F)
+                if self.att_fuse:  #并不是 所有模块走完再fuse的！！即非(st-st-st-st-st)+(ts-ts-ts-ts-ts)后fuse
+                    att = self.para_attn[idx]
+                    alpha = torch.cat([x_s, x_t], dim=-1)
                     BF, J = alpha.shape[:2]
                     alpha = att(alpha)
                     alpha = alpha.softmax(dim=-1)
-                    x = x_st * alpha[:,:,0:1] + x_ts * alpha[:,:,1:2]
+                    x1 = x_s * alpha[:,:,0:1] + x_t * alpha[:,:,1:2]
                 else:  
-                    x = (x_st + x_ts)*0.5
-            elif self.run_mode=="seq-st-st":
-                x = blk0(x, F)
-            elif self.run_mode=="seq-ts-ts":
-                x = blk0(x, F)
-            elif self.run_mode=="seq-tt-ss" or self.run_mode=="seq-ss-tt":
-                x = blk0(x, F)
-                x = blk1(x, F)
+                    x1 = (x_s + x_t)*0.5   
+            # branch2 seqst
+            for idx, blk in enumerate(self.blocks_st):
+                x2 = blk(x2, F)
+            # branch3 seqts
+            for idx, blk in enumerate(self.blocks_ts):
+                x3 = blk(x3, F)
+            # branch4 seqsstt
+            for idx, (blk0, blk1) in enumerate(zip(self.blocks_sstt1, self.blocks_sstt2)):
+                x4 = blk0(x4, F)
+                x4 = blk1(x4, F)
+            # branch5 seqttss 
+            for idx, (blk0, blk1) in enumerate(zip(self.blocks_ttss1, self.blocks_ttss2)):
+                x5 = blk0(x5, F)
+                x5 = blk1(x5, F)
+
+            if self.att_fuse:  #所有branch走完再fuse
+                att = self.branch_attn
+                alpha = torch.cat([x1, x2, x3, x4, x5], dim=-1)
+                BF, J = alpha.shape[:2]
+                alpha = att(alpha)
+                alpha = alpha.softmax(dim=-1)
+                x = x1 * alpha[:,:,0:1] + x2 * alpha[:,:,1:2] + x3 * alpha[:,:,2:3] + x4 * alpha[:,:,3:4] + x5 * alpha[:,:,4:5] 
+            else:  
+                x = (x1 + x2 + x3 + x4 + x5)*0.2
+            
+            # #branch 2
+            # if self.att_fuse:  #所有branch走完再fuse
+            #     att = self.branch_attn
+            #     alpha = torch.cat([x1, x2], dim=-1)
+            #     BF, J = alpha.shape[:2]
+            #     alpha = att(alpha)
+            #     alpha = alpha.softmax(dim=-1)
+            #     x = x1 * alpha[:,:,0:1] + x2 * alpha[:,:,1:2]
+            # else:  
+            #     x = (x1 + x2)*0.5
+
+        elif self.cho_branch != 0 and self.run_mode == "eval":
+            # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"
+            if self.cho_branch==1:  # "para"
+                for idx, (blk0, blk1) in enumerate(zip(self.blocks_paras, self.blocks_parat)):
+                    x_st = blk0(x, F)
+                    x_ts = blk1(x, F)
+                    if self.att_fuse:  # fuse(st-ts)*5
+                        att = self.para_attn[idx]
+                        alpha = torch.cat([x_st, x_ts], dim=-1)
+                        BF, J = alpha.shape[:2]
+                        alpha = att(alpha)
+                        alpha = alpha.softmax(dim=-1)
+                        x = x_st * alpha[:,:,0:1] + x_ts * alpha[:,:,1:2]
+                    else:  
+                        x = (x_st + x_ts)*0.5
+            elif self.cho_branch==2:  # "seq-st-st"
+                for idx, blk in enumerate(self.blocks_st):
+                    x = blk(x, F)
+            elif self.cho_branch==3:  # "seq-ts-ts"
+                for idx, blk in enumerate(self.blocks_ts):
+                    x = blk(x, F)
+            elif self.cho_branch==4:  # "seq-tt-ss"
+                for idx, (blk0, blk1) in enumerate(zip(self.blocks_sstt1, self.blocks_sstt2)):
+                    x = blk0(x, F)
+                    x = blk1(x, F)
+            elif self.cho_branch==5:  # "seq-ss-tt"
+                for idx, (blk0, blk1) in enumerate(zip(self.blocks_ttss1, self.blocks_ttss2)):
+                    x = blk0(x, F)
+                    x = blk1(x, F)               
             else:
-                raise NotImplementedError(self.run_mode)
+                raise NotImplementedError(self.cho_branch)
+        else:
+            raise NotImplementedError(self.run_mode)
 
         x = self.norm(x)
         x = x.reshape(B, F, J, -1)

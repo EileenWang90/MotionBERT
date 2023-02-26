@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES']='0,2,3,5,6,7' # '1,3' '2,3,4,5,6,7'
+os.environ['CUDA_VISIBLE_DEVICES']='2,3,4,5,6,7' # '1,3' '2,3,4,5,6,7'
 # os.environ["CUDA_VISIBLE_DEVICES"]='-1'  # Disable GPU  
 import numpy as np
 import argparse
@@ -40,6 +40,8 @@ random.seed(0)
 np.random.seed(0)
 torch.manual_seed(0)
 
+branch_map = ["all", "para", "seqst", "seqts", "seqsstt", "seqttss"]
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="configs/pretrain.yaml", help="Path to the config file.")
@@ -62,9 +64,11 @@ def save_checkpoint(chk_path, epoch, lr, optimizer, model_pos, min_loss):
         'min_loss' : min_loss
     }, chk_path)
     
-def evaluate(args, model_pos, test_loader, datareader):
+def evaluate(args, model_pos, test_loader, datareader, cho_branch=0):
     print('INFO: Testing')
     results_all = []
+    # set model.run_mode
+    model_pos.module.set_run_mode("eval", cho_branch=cho_branch)
     model_pos.eval()            
     with torch.no_grad():
         for batch_input, batch_gt in tqdm(test_loader):
@@ -254,6 +258,7 @@ def train_with_config(args, opts):
         
     datareader = DataReaderH36M(n_frames=args.clip_len, sample_stride=args.sample_stride, data_stride_train=args.data_stride, data_stride_test=args.clip_len, dt_root = 'data/motion3d', dt_file=args.dt_file)
     min_loss = 100000
+    min_branch_loss = [100000 for i in range(args.branch_size+1)] # just use 1-5
     model_backbone = load_backbone(args)
     model_params = 0
     for parameter in model_backbone.parameters():
@@ -304,6 +309,8 @@ def train_with_config(args, opts):
             checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
             model_backbone.load_state_dict(checkpoint['model_pos'], strict=True)
         model_pos = model_backbone
+
+    model_pos.module.set_run_mode("train")
         
     if args.partial_train:
         model_pos = partial_train_layers(model_pos, args.partial_train)
@@ -354,37 +361,6 @@ def train_with_config(args, opts):
             train_epoch(args, model_pos, train_loader_3d, losses, optimizer, has_3d=True, has_gt=True) 
             elapsed = (time() - start_time) / 60
 
-            if args.no_eval:
-                print('[%d] time %.2f lr %f 3d_train %f' % (
-                    epoch + 1,
-                    elapsed,
-                    lr,
-                   losses['3d_pos'].avg))
-            else:
-                e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader)
-                print('[%d] time %.2f lr %f 3d_train %f e1 %f e2 %f' % (
-                    epoch + 1,
-                    elapsed,
-                    lr,
-                    losses['3d_pos'].avg,
-                    e1, e2))
-                train_writer.add_scalar('Error P1', e1, epoch + 1)
-                train_writer.add_scalar('Error P2', e2, epoch + 1)
-                train_writer.add_scalar('loss_3d_pos', losses['3d_pos'].avg, epoch + 1)
-                train_writer.add_scalar('loss_2d_proj', losses['2d_proj'].avg, epoch + 1)
-                train_writer.add_scalar('loss_3d_scale', losses['3d_scale'].avg, epoch + 1)
-                train_writer.add_scalar('loss_3d_velocity', losses['3d_velocity'].avg, epoch + 1)
-                train_writer.add_scalar('loss_lv', losses['lv'].avg, epoch + 1)
-                train_writer.add_scalar('loss_lg', losses['lg'].avg, epoch + 1)
-                train_writer.add_scalar('loss_a', losses['angle'].avg, epoch + 1)
-                train_writer.add_scalar('loss_av', losses['angle_velocity'].avg, epoch + 1)
-                train_writer.add_scalar('loss_total', losses['total'].avg, epoch + 1)
-                
-            # Decay learning rate exponentially
-            lr *= lr_decay
-            for param_group in optimizer.param_groups:
-                param_group['lr'] *= lr_decay
-
             # Save checkpoints
             chk_path = os.path.join(opts.checkpoint, 'epoch_{}.bin'.format(epoch))
             chk_path_latest = os.path.join(opts.checkpoint, 'latest_epoch.bin')
@@ -393,12 +369,58 @@ def train_with_config(args, opts):
             save_checkpoint(chk_path_latest, epoch, lr, optimizer, model_pos, min_loss)
             if (epoch + 1) % args.checkpoint_frequency == 0:
                 save_checkpoint(chk_path, epoch, lr, optimizer, model_pos, min_loss)
-            if e1 < min_loss:
-                min_loss = e1
-                save_checkpoint(chk_path_best, epoch, lr, optimizer, model_pos, min_loss)
+
+            if args.no_eval:
+                print('[%d] time %.2f lr %f 3d_train %f' % (
+                    epoch + 1,
+                    elapsed,
+                    lr,
+                   losses['3d_pos'].avg))
+            else:
+                for i in range(args.branch_size+1):
+                    e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader, cho_branch=i)
+                    print('mode %s [%d] time %.2f lr %f 3d_train %f e1 %f e2 %f' % (
+                        branch_map[i],
+                        epoch + 1,
+                        elapsed,
+                        lr,
+                        losses['3d_pos'].avg,
+                        e1, e2))
+                    if i==0:  # just write in train mode.
+                        train_writer.add_scalar('Error P1', e1, epoch + 1)
+                        train_writer.add_scalar('Error P2', e2, epoch + 1)
+                        train_writer.add_scalar('loss_3d_pos', losses['3d_pos'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_2d_proj', losses['2d_proj'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_3d_scale', losses['3d_scale'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_3d_velocity', losses['3d_velocity'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_lv', losses['lv'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_lg', losses['lg'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_a', losses['angle'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_av', losses['angle_velocity'].avg, epoch + 1)
+                        train_writer.add_scalar('loss_total', losses['total'].avg, epoch + 1)
+                    
+                        if e1 < min_loss:
+                            min_loss = e1
+                            save_checkpoint(chk_path_best, epoch, lr, optimizer, model_pos, min_loss)
+                    if i!=0 and e1 < min_branch_loss[i]:
+                        min_branch_loss[i] = e1
+                        chk_path_branch_best = os.path.join(opts.checkpoint, branch_map[i]+'_best_epoch.bin'.format(epoch))
+                        save_checkpoint(chk_path_branch_best, epoch, lr, optimizer, model_pos, min_branch_loss)
+                
+                # set model.run_mode
+                # torch.nn.modules.module.ModuleAttributeError: 'DataParallel' object has no attribute 'set_run_mode'
+                model_pos.module.set_run_mode("train")
+            
+            # Decay learning rate exponentially
+            lr *= lr_decay
+            for param_group in optimizer.param_groups:
+                param_group['lr'] *= lr_decay
+
                 
     if opts.evaluate:
         e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader)
+        # set model.run_mode
+        model_pos.module.set_run_mode("train")
 
 if __name__ == "__main__":
     opts = parse_args()
