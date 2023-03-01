@@ -369,6 +369,7 @@ class DSTformer(nn.Module):
         self.joints_embed = nn.Linear(dim_in, dim_feat)
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
+        self.intermediate = intermediate
         self.run_mode = run_mode
         self.branch_size =branch_size
         self.cho_branch = cho_branch
@@ -455,6 +456,12 @@ class DSTformer(nn.Module):
             self.branch_attn = nn.Linear(dim_feat*self.branch_size, self.branch_size)
             self.branch_attn.weight.data.fill_(0)
             self.branch_attn.bias.data.fill_(0.5)
+        # Output prediction layers.
+        if self.intermediate:
+            if dim_rep:
+                self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_feat, dim_rep), nn.Tanh(), nn.Linear(dim_rep, dim_out)) for _ in range(self.branch_size)])
+            else:
+                self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_rep, dim_out)) for _ in range(self.branch_size)])
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -468,6 +475,9 @@ class DSTformer(nn.Module):
     def get_classifier(self):
         return self.head
     
+    def get_run_mode(self):
+        print("self.run_mode:", self.run_mode, "self.cho_branch:", self.cho_branch)
+
     def set_run_mode(self, run_mode="train", cho_branch=0):
         if run_mode=="train":
             self.run_mode = "train"
@@ -540,16 +550,42 @@ class DSTformer(nn.Module):
             else:  
                 x = (x1 + x2 + x3 + x4 + x5)*0.2
             
-            # #branch 2
-            # if self.att_fuse:  #所有branch走完再fuse
-            #     att = self.branch_attn
-            #     alpha = torch.cat([x1, x2], dim=-1)
-            #     BF, J = alpha.shape[:2]
-            #     alpha = att(alpha)
-            #     alpha = alpha.softmax(dim=-1)
-            #     x = x1 * alpha[:,:,0:1] + x2 * alpha[:,:,1:2]
-            # else:  
-            #     x = (x1 + x2)*0.5
+            x = self.norm(x)
+            x = x.reshape(B, F, J, -1)
+            intermediate_list = []
+            if self.run_mode == "train" and self.intermediate: 
+                for i in range(self.branch_size+1):
+                    if i==0:
+                        x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
+                        x = self.head(x)
+                        intermediate_list.append(x)
+                    elif i==1:
+                        x1 = x1.reshape(B, F, J, -1)
+                        pred = self.intermediate_pred[i-1](x1)
+                        intermediate_list.append(pred)
+                    elif i==2:
+                        x2 = x2.reshape(B, F, J, -1)
+                        pred = self.intermediate_pred[i-1](x2)
+                        intermediate_list.append(pred)
+                    elif i==3:
+                        x3 = x3.reshape(B, F, J, -1)
+                        pred = self.intermediate_pred[i-1](x3)
+                        intermediate_list.append(pred)
+                    elif i==4:
+                        x4 = x4.reshape(B, F, J, -1)
+                        pred = self.intermediate_pred[i-1](x4)
+                        intermediate_list.append(pred)
+                    elif i==5:
+                        x5 = x5.reshape(B, F, J, -1)
+                        pred = self.intermediate_pred[i-1](x5)
+                        intermediate_list.append(pred)
+                return intermediate_list
+            else:  # if self.cho_branch==0 and self.run_mode=="eval"
+                x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
+                if return_rep:
+                    return x
+                x = self.head(x)
+                return x
 
         elif self.cho_branch != 0 and self.run_mode == "eval":
             # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"
@@ -582,16 +618,16 @@ class DSTformer(nn.Module):
                     x = blk1(x, F)               
             else:
                 raise NotImplementedError(self.cho_branch)
+
+            x = self.norm(x)
+            x = x.reshape(B, F, J, -1)
+            x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
+            if return_rep:
+                return x
+            x = self.head(x)
+            return x
         else:
             raise NotImplementedError(self.run_mode)
-
-        x = self.norm(x)
-        x = x.reshape(B, F, J, -1)
-        x = self.pre_logits(x)         # [B, F, J, dim_feat]
-        if return_rep:
-            return x
-        x = self.head(x)
-        return x
 
     def get_representation(self, x):
         return self.forward(x, return_rep=True)

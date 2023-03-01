@@ -58,9 +58,21 @@ def loss_mpjpe(predicted, target):
     Mean per-joint position error (i.e. mean Euclidean distance),
     often referred to as "Protocol #1" in many papers.
     """
+    # print("predicted.shape:", predicted.shape)
+    # print("target.shape:",target.shape)
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
-    
+
+def loss_KD(predicted, target):
+    """
+    Mean per-joint position error (i.e. mean Euclidean distance),
+    often referred to as "Protocol #1" in many papers.
+    """
+    # print("predicted.shape:", predicted.shape)
+    # print("target.shape:",target.shape)
+    assert predicted.shape == target.shape
+    return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
+
 def weighted_mpjpe(predicted, target, w):
     """
     Weighted mean per-joint position error (i.e. mean Euclidean distance)

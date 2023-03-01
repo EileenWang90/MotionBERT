@@ -67,8 +67,8 @@ def save_checkpoint(chk_path, epoch, lr, optimizer, model_pos, min_loss):
 def evaluate(args, model_pos, test_loader, datareader, cho_branch=0):
     print('INFO: Testing')
     results_all = []
-    # set model.run_mode
     model_pos.module.set_run_mode("eval", cho_branch=cho_branch)
+    model_pos.module.get_run_mode()
     model_pos.eval()            
     with torch.no_grad():
         for batch_input, batch_gt in tqdm(test_loader):
@@ -182,16 +182,38 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
         
         optimizer.zero_grad()
         if has_3d:
-            loss_3d_pos = loss_mpjpe(predicted_3d_pos, batch_gt)
-            # w-mpjpe
-            # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
-            # loss_3d_pos = weighted_mpjpe(predicted_3d_pos, batch_gt, w_mpjpe)
-            loss_3d_scale = n_mpjpe(predicted_3d_pos, batch_gt)
-            loss_3d_velocity = loss_velocity(predicted_3d_pos, batch_gt)
-            loss_lv = loss_limb_var(predicted_3d_pos)
-            loss_lg = loss_limb_gt(predicted_3d_pos, batch_gt)
-            loss_a = loss_angle(predicted_3d_pos, batch_gt)
-            loss_av = loss_angle_velocity(predicted_3d_pos, batch_gt)
+            if args.intermediate: # loss = loss + lambda_KD(inter_feature)
+                loss_3d_pos = 0.0
+                loss_3d_scale = 0.0
+                loss_3d_velocity = 0.0
+                loss_lv = 0.0
+                loss_lg = 0.0
+                loss_a = 0.0
+                loss_av = 0.0
+                # predicted_3d_pos: list
+                for i in range(args.branch_size+1):
+                    lambda_intermediate = args.lambda_KD if i!=0 else 1
+                    loss_3d_pos += lambda_intermediate * loss_mpjpe(predicted_3d_pos[i], batch_gt)
+                    # w-mpjpe
+                    # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
+                    # loss_3d_pos = weighted_mpjpe(predicted_3d_pos, batch_gt, w_mpjpe)
+                    loss_3d_scale += lambda_intermediate * n_mpjpe(predicted_3d_pos[i], batch_gt)
+                    loss_3d_velocity += lambda_intermediate * loss_velocity(predicted_3d_pos[i], batch_gt)
+                    loss_lv += lambda_intermediate * loss_limb_var(predicted_3d_pos[i])
+                    loss_lg += lambda_intermediate * loss_limb_gt(predicted_3d_pos[i], batch_gt)
+                    loss_a += lambda_intermediate * loss_angle(predicted_3d_pos[i], batch_gt)
+                    loss_av += lambda_intermediate * loss_angle_velocity(predicted_3d_pos[i], batch_gt)
+            else:
+                loss_3d_pos = loss_mpjpe(predicted_3d_pos, batch_gt)
+                # w-mpjpe
+                # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
+                # loss_3d_pos = weighted_mpjpe(predicted_3d_pos, batch_gt, w_mpjpe)
+                loss_3d_scale = n_mpjpe(predicted_3d_pos, batch_gt)
+                loss_3d_velocity = loss_velocity(predicted_3d_pos, batch_gt)
+                loss_lv = loss_limb_var(predicted_3d_pos)
+                loss_lg = loss_limb_gt(predicted_3d_pos, batch_gt)
+                loss_a = loss_angle(predicted_3d_pos, batch_gt)
+                loss_av = loss_angle_velocity(predicted_3d_pos, batch_gt)
             loss_total = loss_3d_pos + \
                          args.lambda_scale       * loss_3d_scale + \
                          args.lambda_3d_velocity * loss_3d_velocity + \
@@ -305,12 +327,14 @@ def train_with_config(args, opts):
             opts.resume = chk_filename
         if opts.resume or opts.evaluate:
             chk_filename = opts.evaluate if opts.evaluate else opts.resume
+            # chk_filename = opts.resume
             print('Loading checkpoint', chk_filename)
+            # print(os.path.exists(chk_filename))
+            # print("opts.evaluate:", opts.evaluate)
+            # print("opts.resume:", opts.resume)
             checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
             model_backbone.load_state_dict(checkpoint['model_pos'], strict=True)
         model_pos = model_backbone
-
-    model_pos.module.set_run_mode("train")
         
     if args.partial_train:
         model_pos = partial_train_layers(model_pos, args.partial_train)
@@ -386,9 +410,12 @@ def train_with_config(args, opts):
                         lr,
                         losses['3d_pos'].avg,
                         e1, e2))
+                    
+                    error_tag1='Error P1/'+str(i)
+                    error_tag2='Error P2/'+str(i)
+                    train_writer.add_scalar(error_tag1, e1, epoch + 1)
+                    train_writer.add_scalar(error_tag2, e2, epoch + 1)
                     if i==0:  # just write in train mode.
-                        train_writer.add_scalar('Error P1', e1, epoch + 1)
-                        train_writer.add_scalar('Error P2', e2, epoch + 1)
                         train_writer.add_scalar('loss_3d_pos', losses['3d_pos'].avg, epoch + 1)
                         train_writer.add_scalar('loss_2d_proj', losses['2d_proj'].avg, epoch + 1)
                         train_writer.add_scalar('loss_3d_scale', losses['3d_scale'].avg, epoch + 1)
@@ -418,7 +445,20 @@ def train_with_config(args, opts):
 
                 
     if opts.evaluate:
-        e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader)
+        if args.cho_branch==-1:
+            for i in range(args.branch_size+1):
+                e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader,cho_branch=i)
+        elif args.cho_branch==-2:
+            checkpoint_map=["best_epoch.bin", "para_best_epoch.bin", "seqst_best_epoch.bin", "seqts_best_epoch.bin", "seqsstt_best_epoch.bin", "seqttss_best_epoch.bin"]
+            for i in range(args.branch_size+1):
+                chk_filename_list=chk_filename.split("/")[:-1]
+                chk_filename_list.append(checkpoint_map[i])
+                chk_filename="/".join(chk_filename_list)
+                checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
+                model_pos.load_state_dict(checkpoint['model_pos'], strict=True)
+                e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader,cho_branch=i)
+        else:
+            e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader,cho_branch=args.cho_branch)
         # set model.run_mode
         model_pos.module.set_run_mode("train")
 
