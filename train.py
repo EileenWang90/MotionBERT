@@ -161,7 +161,7 @@ def evaluate(args, model_pos, test_loader, datareader, cho_branch=0):
     print('----------')
     return e1, e2, results_all
         
-def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt):
+def train_epoch(args, model_pos, train_loader, losses, optimizer, epoch, has_3d, has_gt):
     model_pos.train()
     for idx, (batch_input, batch_gt) in tqdm(enumerate(train_loader)):    
         batch_size = len(batch_input)        
@@ -190,19 +190,22 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
                 loss_lg = 0.0
                 loss_a = 0.0
                 loss_av = 0.0
+                loss_3d_pos_KD = 0.0  # loss_soft
+                consistency_weight = get_current_consistency_weight(epoch, args.epochs)  # for KD
                 # predicted_3d_pos: list
                 for i in range(args.branch_size+1):
-                    lambda_intermediate = args.lambda_KD if i!=0 else 1
-                    loss_3d_pos += lambda_intermediate * loss_mpjpe(predicted_3d_pos[i], batch_gt)
+                    loss_3d_pos += loss_mpjpe(predicted_3d_pos[i], batch_gt)  # (N, T, 17, 3)
+                    if i!=0:
+                        loss_3d_pos_KD += consistency_weight*loss_KD(predicted_3d_pos[i], predicted_3d_pos[0].detach())
                     # w-mpjpe
                     # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
                     # loss_3d_pos = weighted_mpjpe(predicted_3d_pos, batch_gt, w_mpjpe)
-                    loss_3d_scale += lambda_intermediate * n_mpjpe(predicted_3d_pos[i], batch_gt)
-                    loss_3d_velocity += lambda_intermediate * loss_velocity(predicted_3d_pos[i], batch_gt)
-                    loss_lv += lambda_intermediate * loss_limb_var(predicted_3d_pos[i])
-                    loss_lg += lambda_intermediate * loss_limb_gt(predicted_3d_pos[i], batch_gt)
-                    loss_a += lambda_intermediate * loss_angle(predicted_3d_pos[i], batch_gt)
-                    loss_av += lambda_intermediate * loss_angle_velocity(predicted_3d_pos[i], batch_gt)
+                    loss_3d_scale += n_mpjpe(predicted_3d_pos[i], batch_gt)
+                    loss_3d_velocity += loss_velocity(predicted_3d_pos[i], batch_gt)
+                    loss_lv += loss_limb_var(predicted_3d_pos[i])
+                    loss_lg += loss_limb_gt(predicted_3d_pos[i], batch_gt)
+                    loss_a += loss_angle(predicted_3d_pos[i], batch_gt)
+                    loss_av += loss_angle_velocity(predicted_3d_pos[i], batch_gt)
             else:
                 loss_3d_pos = loss_mpjpe(predicted_3d_pos, batch_gt)
                 # w-mpjpe
@@ -214,13 +217,15 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
                 loss_lg = loss_limb_gt(predicted_3d_pos, batch_gt)
                 loss_a = loss_angle(predicted_3d_pos, batch_gt)
                 loss_av = loss_angle_velocity(predicted_3d_pos, batch_gt)
+                loss_3d_pos_KD = 0.0  # When no intermediate, no Knowledge Distillation(KD) loss
             loss_total = loss_3d_pos + \
                          args.lambda_scale       * loss_3d_scale + \
                          args.lambda_3d_velocity * loss_3d_velocity + \
                          args.lambda_lv          * loss_lv + \
                          args.lambda_lg          * loss_lg + \
                          args.lambda_a           * loss_a  + \
-                         args.lambda_av          * loss_av
+                         args.lambda_av          * loss_av + \
+                         args.lambda_KD          * loss_3d_pos_KD
             losses['3d_pos'].update(loss_3d_pos.item(), batch_size)
             losses['3d_scale'].update(loss_3d_scale.item(), batch_size)
             losses['3d_velocity'].update(loss_3d_velocity.item(), batch_size)
@@ -228,6 +233,7 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
             losses['lg'].update(loss_lg.item(), batch_size)
             losses['angle'].update(loss_a.item(), batch_size)
             losses['angle_velocity'].update(loss_av.item(), batch_size)
+            losses['3d_pos_KD'].update(loss_3d_pos_KD.item(), batch_size)
             losses['total'].update(loss_total.item(), batch_size)
         else:
             loss_2d_proj = loss_2d_weighted(predicted_3d_pos, batch_gt, conf)
@@ -376,13 +382,14 @@ def train_with_config(args, opts):
             losses['3d_velocity'] = AverageMeter()
             losses['angle'] = AverageMeter()
             losses['angle_velocity'] = AverageMeter()
+            losses['3d_pos_KD'] = AverageMeter()
             N = 0
                         
             # Curriculum Learning
             if args.train_2d and (epoch >= args.pretrain_3d_curriculum):
-                train_epoch(args, model_pos, posetrack_loader_2d, losses, optimizer, has_3d=False, has_gt=True)
-                train_epoch(args, model_pos, instav_loader_2d, losses, optimizer, has_3d=False, has_gt=False)
-            train_epoch(args, model_pos, train_loader_3d, losses, optimizer, has_3d=True, has_gt=True) 
+                train_epoch(args, model_pos, posetrack_loader_2d, losses, optimizer, epoch, has_3d=False, has_gt=True)
+                train_epoch(args, model_pos, instav_loader_2d, losses, optimizer, epoch, has_3d=False, has_gt=False)
+            train_epoch(args, model_pos, train_loader_3d, losses, optimizer, epoch, has_3d=True, has_gt=True) 
             elapsed = (time() - start_time) / 60
 
             # Save checkpoints
@@ -403,12 +410,13 @@ def train_with_config(args, opts):
             else:
                 for i in range(args.branch_size+1):
                     e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader, cho_branch=i)
-                    print('mode %s [%d] time %.2f lr %f 3d_train %f e1 %f e2 %f' % (
+                    print('mode %s [%d] time %.2f lr %f 3d_train %f 3d_train_KD %f e1 %f e2 %f' % (
                         branch_map[i],
                         epoch + 1,
                         elapsed,
                         lr,
                         losses['3d_pos'].avg,
+                        losses['3d_pos_KD'].avg,
                         e1, e2))
                     
                     error_tag1='Error P1/'+str(i)

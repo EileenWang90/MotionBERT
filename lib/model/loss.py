@@ -50,6 +50,16 @@ def p_mpjpe(predicted, target):
     # Return MPJPE
     return np.mean(np.linalg.norm(predicted_aligned - target, axis=len(target.shape)-1), axis=1)
 
+# for Knowledge Distillation
+def get_current_consistency_weight(current_epoch, rampup_length):  # ensembling learning
+    # Consistency ramp-up from https://arxiv.org/abs/1610.02242  https://blog.csdn.net/u011345885/article/details/111758193
+    if rampup_length == 0:  
+        return 1.0
+    else:
+        current_epoch = np.clip(current_epoch, 0.0, rampup_length)
+        phase = 1.0 - current_epoch / rampup_length
+        return float(np.exp(-5.0 * phase * phase))
+
 
 # PyTorch-based errors (for losses)
 
@@ -60,11 +70,12 @@ def loss_mpjpe(predicted, target):
     """
     # print("predicted.shape:", predicted.shape)
     # print("target.shape:",target.shape)
-    assert predicted.shape == target.shape
-    return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
+    assert predicted.shape == target.shape   # (N, T, 17, 3)
+    return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))  # torch.norm默认是求l2范数
 
 def loss_KD(predicted, target):
     """
+    Pixel-wise Knowledge Distillation for MPJPE 其实计算和loss_mpjpe是一模一样的
     Mean per-joint position error (i.e. mean Euclidean distance),
     often referred to as "Protocol #1" in many papers.
     """
