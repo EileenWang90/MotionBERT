@@ -5,7 +5,7 @@ finetune: False
 partial_train: null
 
 # Traning 
-epochs: 120
+epochs: 60
 checkpoint_frequency: 30
 batch_size: 1024  # 32 2048 1024
 dropout: 0.0
@@ -19,7 +19,7 @@ dim_feat: 128  # 256
 mlp_ratio: 4
 depth: 3
 dim_rep: 256  # 512
-num_heads: 8
+num_heads: 16
 att_fuse: True
 res_scale_init_values: [null, null, null, null, null] #[1.0, 1.0, 1.0, 1.0, 1.0]
 layer_scale_init_values: [null, null, null, null, null]
@@ -27,9 +27,9 @@ layer_scale_init_values: [null, null, null, null, null]
 # st_mode2: "stage_t"
 intermediate: True
 run_mode: "train"  # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"  !!!bugs
-branch_size: 5
-cho_branch: -2
-strict: False
+branch_size: 1
+cho_branch: 0
+strict: True
 
 # Data
 data_root: data/motion3d/MB3D_f9s3/
@@ -50,7 +50,7 @@ lambda_lv: 0.0
 lambda_lg: 0.0
 lambda_a: 0.0
 lambda_av: 0.0
-lambda_KD: 2.0
+lambda_KD: 0.0
 
 # Augmentation
 synthetic: False

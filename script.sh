@@ -21,10 +21,39 @@ python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqttss.yaml --evalua
 # 2023.02.23 2 V100 bs2048 显存16430M 一个epoch3分钟，120个epoch大概6小时 比较差
 python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqsstt.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/train_f9s3_seqsstt.log
 python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqsstt.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqsstt/test_f9s3_seqsstt.log 
+# 2023.02.25 6 2080Ti bs2048应该是总bs 比较depth 3,5,8,10 depth越大一个epoch时长越长
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst3.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqst3 |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst3/train_f9s3_seqst3.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst3.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqst3/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst3/test_f9s3_seqst3.log 
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst8.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqst8 |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst8/train_f9s3_seqst8.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst8.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqst8/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst8/test_f9s3_seqst8.log 
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst10.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_seqst8 |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst10/train_f9s3_seqst10.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_seqst10.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_seqst8/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_seqst10/test_f9s3_seqst10.log 
+
+# 2023.02.26 branch 6 2080Ti 显存8983M bs1024  5 para_branch depth=3 train1epoch=06'30 eval1epoch=3' 直接需要20h了。。
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_branch |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch/train_f9s3_branch.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_branch/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch/test_f9s3_branch.log 
+# 2023.02.27 branch_inter 2 V100 可用显存20G, 6 2080Ti 显存8983M,  bs1024  5 para_branch depth=3  train1epoch=06'30 eval1epoch=3' 直接需要20h了。。
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter/train_f9s3_branch_inter.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter/test_f9s3_branch_inter.log 
+# --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter/lastest_epoch.bin
+# 2023.02.28 branch_inter_mean并不是mean 2 V100 可用显存20G, 6 2080Ti 显存8983M,  bs1024  5 para_branch depth=3  train1epoch=7分钟 eval1epoch=3' 直接需要20h了。。
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter_mean.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_mean |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_mean/train_f9s3_branch_inter_mean.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter_mean.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_mean/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_mean/test_f9s3_branch_inter_mean.log 
+# 2023.03.02 branch_inter_KD 2 V100 可用显存20G, 6 2080Ti 显存M,  bs1024 单卡V100测试是depth=1  5 para_branch depth=3  train1epoch=分钟 eval1epoch=3' 直接需要20h了。。
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter_KD.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KD |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KD/train_f9s3_branch_inter_KD.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter_KD.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KD/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KD/test_f9s3_branch_inter_KD.log 
+# 2023.03.02 branch_inter_KD 2 V100 可用显存20G, 6 2080Ti 显存M,  bs1024 单卡V100测试是depth=1  5 para_branch depth=3  train1epoch=分钟 eval1epoch=3' 直接需要20h了。。
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter_KDmean.yaml --checkpoint checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KDmean |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KD/train_f9s3_branch_inter_KDmean.log
+python train.py --config configs/pose3d/MB_train_h36m_f9s3_branch_inter_KDmean.yaml --evaluate checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KDmean/best_epoch.bin |& tee ./checkpoint/pose3d/MB_train_h36m_f9s3_branch_inter_KD/test_f9s3_branch_inter_KDmean.log 
+
+
+
+
+
 
 # test
 python train.py --config configs/pose3d/MB_ft_h36m.yaml --evaluate checkpoint/pose3d/FT_MB_release_MB_ft_h36m/best_epoch.bin |& tee test_finetune.log
-python train.py --config configs/pose3d/MB_train_h36m.yaml --evaluate checkpoint/pose3d/MB_train_h36m_origin/best_epoch.bin |& tee test_scratch.log
+python train.py --config configs/pose3d/MB_train_h36m.yaml --evaluate checkpoint/pose3d/MB_train_h36m_origin/best_epoch.bin |& tee -a test_scratch.log
 
 
 
@@ -43,10 +72,11 @@ python train.py --config configs/pose3d/MB_train_h36m.yaml --checkpoint checkpoi
 
 # Tensorboard
 #GPU01/GPU02
-tensorboard --logdir ./checkpoint/pose3d/ --port 6007 --bind_all
+# tensorboard --logdir ./checkpoint/pose3d/ --port 6008 --bind_all
+tensorboard --logdir ./checkpoint/ablation/ --port 6008 --bind_all
 #mu01
-ssh -L 6007:127.0.0.1:6007 ytwang@gpu02
+ssh -L 6008:127.0.0.1:6008 ytwang@gpu02
 #laptop cmd
-ssh -L  6007:localhost:6007 ytwang@10.134.142.143
+ssh -L  6008:localhost:6008 ytwang@10.134.142.143
 #laptop chrome
-http://127.0.0.1:6007/
+http://127.0.0.1:6008/

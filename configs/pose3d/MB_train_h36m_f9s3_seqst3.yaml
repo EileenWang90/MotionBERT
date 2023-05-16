@@ -7,7 +7,7 @@ partial_train: null
 # Traning 
 epochs: 120
 checkpoint_frequency: 30
-batch_size: 1024  # 32 2048 1024
+batch_size: 2048  # 32
 dropout: 0.0
 learning_rate: 0.0005
 weight_decay: 0.01
@@ -25,11 +25,8 @@ res_scale_init_values: [null, null, null, null, null] #[1.0, 1.0, 1.0, 1.0, 1.0]
 layer_scale_init_values: [null, null, null, null, null]
 # st_mode1: "stage_s"
 # st_mode2: "stage_t"
-intermediate: True
-run_mode: "train"  # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"  !!!bugs
-branch_size: 5
-cho_branch: -2
-strict: False
+intermediate: False
+run_mode: "seq-st-st"  # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"
 
 # Data
 data_root: data/motion3d/MB3D_f9s3/
@@ -50,7 +47,6 @@ lambda_lv: 0.0
 lambda_lg: 0.0
 lambda_a: 0.0
 lambda_av: 0.0
-lambda_KD: 2.0
 
 # Augmentation
 synthetic: False

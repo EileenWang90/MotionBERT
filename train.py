@@ -193,9 +193,9 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, epoch, has_3d,
                 loss_3d_pos_KD = 0.0  # loss_soft
                 consistency_weight = get_current_consistency_weight(epoch, args.epochs)  # for KD
                 # predicted_3d_pos: list
-                for i in range(args.branch_size+1):
+                for i in range(args.depth+1):
                     loss_3d_pos += loss_mpjpe(predicted_3d_pos[i], batch_gt)  # (N, T, 17, 3)
-                    if i!=0:
+                    if i!=0 and args.lambda_KD!=0:
                         loss_3d_pos_KD += consistency_weight*loss_KD(predicted_3d_pos[i], predicted_3d_pos[0].detach())
                     # w-mpjpe
                     # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
@@ -233,7 +233,7 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, epoch, has_3d,
             losses['lg'].update(loss_lg.item(), batch_size)
             losses['angle'].update(loss_a.item(), batch_size)
             losses['angle_velocity'].update(loss_av.item(), batch_size)
-            losses['3d_pos_KD'].update(loss_3d_pos_KD.item(), batch_size)
+            # losses['3d_pos_KD'].update(loss_3d_pos_KD.item(), batch_size)
             losses['total'].update(loss_total.item(), batch_size)
         else:
             loss_2d_proj = loss_2d_weighted(predicted_3d_pos, batch_gt, conf)
@@ -319,13 +319,13 @@ def train_with_config(args, opts):
             chk_filename = opts.evaluate if opts.evaluate else opts.resume
             print('Loading checkpoint', chk_filename)
             checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
-            model_backbone.load_state_dict(checkpoint['model_pos'], strict=True)
+            model_backbone.load_state_dict(checkpoint['model_pos'], strict=args.strict)
             model_pos = model_backbone
         else:
             chk_filename = os.path.join(opts.pretrained, opts.selection)
             print('Loading checkpoint', chk_filename)
             checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
-            model_backbone.load_state_dict(checkpoint['model_pos'], strict=True)
+            model_backbone.load_state_dict(checkpoint['model_pos'], strict=args.strict)
             model_pos = model_backbone            
     else:
         chk_filename = os.path.join(opts.checkpoint, "latest_epoch.bin")
@@ -339,7 +339,7 @@ def train_with_config(args, opts):
             # print("opts.evaluate:", opts.evaluate)
             # print("opts.resume:", opts.resume)
             checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
-            model_backbone.load_state_dict(checkpoint['model_pos'], strict=True)
+            model_backbone.load_state_dict(checkpoint['model_pos'], strict=args.strict)
         model_pos = model_backbone
         
     if args.partial_train:
@@ -408,7 +408,7 @@ def train_with_config(args, opts):
                     lr,
                    losses['3d_pos'].avg))
             else:
-                for i in range(args.branch_size+1):
+                for i in range(args.branch_size):  # for i in range(args.branch_size+1):
                     e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader, cho_branch=i)
                     print('mode %s [%d] time %.2f lr %f 3d_train %f 3d_train_KD %f e1 %f e2 %f' % (
                         branch_map[i],
@@ -462,8 +462,9 @@ def train_with_config(args, opts):
                 chk_filename_list=chk_filename.split("/")[:-1]
                 chk_filename_list.append(checkpoint_map[i])
                 chk_filename="/".join(chk_filename_list)
+                print('Loading checkpoint', chk_filename)
                 checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)
-                model_pos.load_state_dict(checkpoint['model_pos'], strict=True)
+                model_pos.load_state_dict(checkpoint['model_pos'], strict=args.strict)  # True的话原来branch_size=5就不能复用到branch_size=3中了，但这样没法检测错误。。
                 e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader,cho_branch=i)
         else:
             e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader,cho_branch=args.cho_branch)

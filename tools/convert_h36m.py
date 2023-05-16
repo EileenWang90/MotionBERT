@@ -24,14 +24,22 @@ def save_clips(subset_name, root_path, train_data, train_labels):
             pickle.dump(data_dict, myprofile)
             
 # datareader = DataReaderH36M(n_frames=243, sample_stride=1, data_stride_train=81, data_stride_test=243, dt_file = 'h36m_sh_conf_cam_source_final.pkl', dt_root='data/motion3d/')
-datareader = DataReaderH36M(n_frames=9, sample_stride=1, data_stride_train=3, data_stride_test=9, dt_file = 'h36m_sh_conf_cam_source_final.pkl', dt_root='data/motion3d/')
+# datareader = DataReaderH36M(n_frames=81, sample_stride=1, data_stride_train=27, data_stride_test=81, dt_file = 'h36m_sh_conf_cam_source_final.pkl', dt_root='data/motion3d/')
+datareader = DataReaderH36M(n_frames=27, sample_stride=1, data_stride_train=9, data_stride_test=27, dt_file = 'h36m_sh_conf_cam_source_final.pkl', dt_root='data/motion3d/')
+# datareader = DataReaderH36M(n_frames=9, sample_stride=1, data_stride_train=3, data_stride_test=9, dt_file = 'h36m_sh_conf_cam_source_final.pkl', dt_root='data/motion3d/')
+
+# datareader = DataReaderH36M(n_frames=9, sample_stride=1, data_stride_train=3, data_stride_test=9, dt_file = 'h36m_sh_conf_cam_source_final.pkl', dt_root='data/motion3d/', dt_root_gt='data/motion3d/')
+# train_data, test_data, train_labels, test_labels = datareader.get_sliced_data_GT()  # 还没有成功。。
 train_data, test_data, train_labels, test_labels = datareader.get_sliced_data()
 print(train_data.shape, test_data.shape)
 assert len(train_data) == len(train_labels)
 assert len(test_data) == len(test_labels)
 
 # root_path = "data/motion3d/MB3D_f243s81/H36M-SH"
-root_path = "data/motion3d/MB3D_f9s3/H36M-SH"
+# root_path = "data/motion3d/MB3D_f81s27/H36M-SH"
+root_path = "data/motion3d/MB3D_f27s9/H36M-SH"
+# root_path = "data/motion3d/MB3D_f9s3/H36M-SH"
+# root_path = "data/motion3d/MB3D_f9s3/H36M-GT"
 if not os.path.exists(root_path):
     os.makedirs(root_path)
 

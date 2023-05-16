@@ -360,8 +360,8 @@ class DSTformer(nn.Module):
     def __init__(self, dim_in=3, dim_out=3, dim_feat=256, dim_rep=512,
                  depth=2, num_heads=8, mlp_ratio=4, 
                  num_joints=17, maxlen=243, 
-                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, att_fuse=True, 
-                 res_scale_init_values=None, layer_scale_init_values=None, 
+                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
+                 att_fuse=True, res_scale_init_values=None, layer_scale_init_values=None, 
                  intermediate=False, run_mode="train", branch_size=5, cho_branch=0):  # st_mode1="stage_st", st_mode2="stage_ts",
         super().__init__()
         self.dim_out = dim_out
@@ -370,8 +370,9 @@ class DSTformer(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.intermediate = intermediate
+        self.depth = depth
         self.run_mode = run_mode
-        self.branch_size =branch_size
+        self.branch_size = branch_size
         self.cho_branch = cho_branch
         # self.st_mode0 = mode_map[self.run_mode][0]
         # self.st_mode1 = mode_map[self.run_mode][1]
@@ -387,50 +388,54 @@ class DSTformer(nn.Module):
                 dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
                 res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_t")
+                st_mode="stage_t")  
             for i in range(depth)])
-        self.blocks_st = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
-                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_st")
-            for i in range(depth)])
-        self.blocks_ts = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
-                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_ts")
-            for i in range(depth)])
-        self.blocks_sstt1 = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
-                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_s")
-            for i in range(depth)])
-        self.blocks_sstt2 = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
-                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_t")
-            for i in range(depth)])
-        self.blocks_ttss1 = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
-                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_t")
-            for i in range(depth)])
-        self.blocks_ttss2 = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
-                res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
-                st_mode="stage_s")
-            for i in range(depth)])
+        if self.branch_size >=2:
+            self.blocks_st = nn.ModuleList([
+                Block(
+                    dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                    res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                    st_mode="stage_st")
+                for i in range(depth)])
+        if self.branch_size >=3:
+            self.blocks_ts = nn.ModuleList([
+                Block(
+                    dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                    res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                    st_mode="stage_ts")
+                for i in range(depth)])
+        if self.branch_size >=4:
+            self.blocks_sstt1 = nn.ModuleList([
+                Block(
+                    dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                    res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                    st_mode="stage_s")
+                for i in range(depth)])
+            self.blocks_sstt2 = nn.ModuleList([
+                Block(
+                    dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                    res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                    st_mode="stage_t")
+                for i in range(depth)])
+        if self.branch_size >=5:
+            self.blocks_ttss1 = nn.ModuleList([
+                Block(
+                    dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                    res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                    st_mode="stage_t")
+                for i in range(depth)])
+            self.blocks_ttss2 = nn.ModuleList([
+                Block(
+                    dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, 
+                    res_scale_init_value=res_scale_init_values[i], layer_scale_init_value=layer_scale_init_values[i],
+                    st_mode="stage_s")
+                for i in range(depth)])
         self.norm = norm_layer(dim_feat)
         if dim_rep:
             self.pre_logits = nn.Sequential(OrderedDict([
@@ -458,10 +463,14 @@ class DSTformer(nn.Module):
             self.branch_attn.bias.data.fill_(0.5)
         # Output prediction layers.
         if self.intermediate:
+            # if dim_rep:
+            #     self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_feat, dim_rep), nn.Tanh(), nn.Linear(dim_rep, dim_out)) for _ in range(self.branch_size)])
+            # else:
+            #     self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_rep, dim_out)) for _ in range(self.branch_size)])
             if dim_rep:
-                self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_feat, dim_rep), nn.Tanh(), nn.Linear(dim_rep, dim_out)) for _ in range(self.branch_size)])
+                self.intermediate_pred = nn.ModuleList([nn.Sequential(norm_layer(dim_feat), nn.Linear(dim_feat, dim_rep), nn.Tanh(), nn.Linear(dim_rep, dim_out)) for _ in range(self.depth)])
             else:
-                self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_rep, dim_out)) for _ in range(self.branch_size)])
+                self.intermediate_pred = nn.ModuleList([nn.Sequential(nn.Linear(dim_feat, dim_out)) for _ in range(self.self.depth)])
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -505,82 +514,121 @@ class DSTformer(nn.Module):
         x = x.reshape(BF, J, C)  # (BF, J, dim_feat)
         x = self.pos_drop(x)  # dropout
 
+        intermediate_list = []
         if self.run_mode == "train" or self.cho_branch == 0 : # if self.cho_branch==0 and self.run_mode=="eval"
             # 5 branch: "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"
             # branch1 para
-            x1 = x.clone()
-            x2 = x.clone()
-            x3 = x.clone()
-            x4 = x.clone()
-            x5 = x.clone()
+            x_list = [x.clone() for i in range(self.branch_size)]
             for idx, (blk0, blk1) in enumerate(zip(self.blocks_paras, self.blocks_parat)):
-                x_s = blk0(x1, F)
-                x_t = blk1(x1, F)
+                x_s = blk0(x_list[0], F)
+                x_t = blk1(x_list[0], F)
                 if self.att_fuse:  #并不是 所有模块走完再fuse的！！即非(st-st-st-st-st)+(ts-ts-ts-ts-ts)后fuse
                     att = self.para_attn[idx]
                     alpha = torch.cat([x_s, x_t], dim=-1)
                     BF, J = alpha.shape[:2]
                     alpha = att(alpha)
                     alpha = alpha.softmax(dim=-1)
-                    x1 = x_s * alpha[:,:,0:1] + x_t * alpha[:,:,1:2]
+                    x_list[0] = x_s * alpha[:,:,0:1] + x_t * alpha[:,:,1:2]
                 else:  
-                    x1 = (x_s + x_t)*0.5   
-            # branch2 seqst
-            for idx, blk in enumerate(self.blocks_st):
-                x2 = blk(x2, F)
-            # branch3 seqts
-            for idx, blk in enumerate(self.blocks_ts):
-                x3 = blk(x3, F)
-            # branch4 seqsstt
-            for idx, (blk0, blk1) in enumerate(zip(self.blocks_sstt1, self.blocks_sstt2)):
-                x4 = blk0(x4, F)
-                x4 = blk1(x4, F)
-            # branch5 seqttss 
-            for idx, (blk0, blk1) in enumerate(zip(self.blocks_ttss1, self.blocks_ttss2)):
-                x5 = blk0(x5, F)
-                x5 = blk1(x5, F)
+                    x_list[0] = (x_s + x_t)*0.5   
 
-            if self.att_fuse:  #所有branch走完再fuse
-                att = self.branch_attn
-                alpha = torch.cat([x1, x2, x3, x4, x5], dim=-1)
-                BF, J = alpha.shape[:2]
-                alpha = att(alpha)
-                alpha = alpha.softmax(dim=-1)
-                x = x1 * alpha[:,:,0:1] + x2 * alpha[:,:,1:2] + x3 * alpha[:,:,2:3] + x4 * alpha[:,:,3:4] + x5 * alpha[:,:,4:5] 
-            else:  
-                x = (x1 + x2 + x3 + x4 + x5)*0.2
-            
-            x = self.norm(x)
-            x = x.reshape(B, F, J, -1)
-            intermediate_list = []
+                if self.intermediate:
+                    pred = x_list[0].clone().reshape(B, F, J, -1)
+                    pred = self.intermediate_pred[idx](pred)
+                    intermediate_list.append(pred)
+
+            # branch2 seqst
+            if self.branch_size>=2:
+                for idx, blk in enumerate(self.blocks_st):
+                    x_list[1] = blk(x_list[1], F)
+            # branch3 seqts
+            if self.branch_size>=3:
+                for idx, blk in enumerate(self.blocks_ts):
+                    x_list[2] = blk(x_list[2], F)
+            # branch4 seqsstt
+            if self.branch_size>=4:            
+                for idx, (blk0, blk1) in enumerate(zip(self.blocks_sstt1, self.blocks_sstt2)):
+                    x_list[3] = blk0(x_list[3], F)
+                    x_list[3] = blk1(x_list[3], F)
+            # branch5 seqttss 
+            if self.branch_size>=5:
+                for idx, (blk0, blk1) in enumerate(zip(self.blocks_ttss1, self.blocks_ttss2)):
+                    x_list[4] = blk0(x_list[4], F)
+                    x_list[4] = blk1(x_list[4], F)
+
+            # if self.att_fuse:  #所有branch走完再fuse
+            #     att = self.branch_attn
+            #     alpha = torch.cat(x_list, dim=-1)
+            #     BF, J = alpha.shape[:2]  # BF,J,C
+            #     alpha = att(alpha)
+            #     alpha = alpha.softmax(dim=-1)
+            #     # x = x1 * alpha[:,:,0:1] + x2 * alpha[:,:,1:2] + x3 * alpha[:,:,2:3] + x4 * alpha[:,:,3:4] + x5 * alpha[:,:,4:5] 
+            #     for i in range(self.branch_size+1):  # 可以变成残差连接？ 目前没改成残差连接
+            #         if i==self.branch_size:
+            #             x -= x
+            #         else:
+            #             x += x_list[i] * alpha[:,:,i:(i+1)] 
+            # else:
+            #     for i in range(self.branch_size+1):  # 可以变成残差连接？ 目前没改成残差连接
+            #         if i==self.branch_size:
+            #             x -= x 
+            #         else: 
+            #             x += x_list[i]
+            #     x /= self.branch_size
+
+            # if self.att_fuse:  #所有branch走完再fuse
+            #     att = self.branch_attn
+            #     alpha = torch.cat([x_list[0], x_list[1], x_list[2], x_list[3], x_list[4]], dim=-1)
+            #     BF, J = alpha.shape[:2]
+            #     alpha = att(alpha)
+            #     alpha = alpha.softmax(dim=-1)
+            #     x = x_list[0] * alpha[:,:,0:1] + x_list[1] * alpha[:,:,1:2] + x_list[2] * alpha[:,:,2:3] + x_list[3] * alpha[:,:,3:4] + x_list[4] * alpha[:,:,4:5] 
+            # else:  
+            #     x = (x_list[0] + x_list[1] + x_list[2] + x_list[3] + x_list[4])*0.2
+
+            # x=x_list[0]
+            # x = self.norm(x)    # 前面少了这步呀！！
+            # x = x.reshape(B, F, J, -1)
+
             if self.run_mode == "train" and self.intermediate: 
-                for i in range(self.branch_size+1):
-                    if i==0:
-                        x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
-                        x = self.head(x)
-                        intermediate_list.append(x)
-                    elif i==1:
-                        x1 = x1.reshape(B, F, J, -1)
-                        pred = self.intermediate_pred[i-1](x1)
-                        intermediate_list.append(pred)
-                    elif i==2:
-                        x2 = x2.reshape(B, F, J, -1)
-                        pred = self.intermediate_pred[i-1](x2)
-                        intermediate_list.append(pred)
-                    elif i==3:
-                        x3 = x3.reshape(B, F, J, -1)
-                        pred = self.intermediate_pred[i-1](x3)
-                        intermediate_list.append(pred)
-                    elif i==4:
-                        x4 = x4.reshape(B, F, J, -1)
-                        pred = self.intermediate_pred[i-1](x4)
-                        intermediate_list.append(pred)
-                    elif i==5:
-                        x5 = x5.reshape(B, F, J, -1)
-                        pred = self.intermediate_pred[i-1](x5)
-                        intermediate_list.append(pred)
+                # for i in range(self.branch_size+1):
+                #     if i==0:
+                #         x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
+                #         x = self.head(x)
+                #         intermediate_list.append(x)
+                #     elif i==1:
+                #         x_list[0] = x_list[0].reshape(B, F, J, -1)
+                #         pred = self.intermediate_pred[i-1](x_list[0])
+                #         intermediate_list.append(pred)
+                #     elif self.branch_size>=i and i==2:
+                #         x_list[1] = x_list[1].reshape(B, F, J, -1)
+                #         pred = self.intermediate_pred[i-1](x_list[1])
+                #         intermediate_list.append(pred)
+                #     elif self.branch_size>=i and i==3:
+                #         x_list[2] = x_list[2].reshape(B, F, J, -1)
+                #         pred = self.intermediate_pred[i-1](x_list[2])
+                #         intermediate_list.append(pred)
+                #     elif self.branch_size>=i and i==4:
+                #         x_list[3] = x_list[3].reshape(B, F, J, -1)
+                #         pred = self.intermediate_pred[i-1](x_list[3])
+                #         intermediate_list.append(pred)
+                #     elif self.branch_size>=i and i==5:
+                #         x_list[4] = x_list[4].reshape(B, F, J, -1)
+                #         pred = self.intermediate_pred[i-1](x_list[4])
+                #         intermediate_list.append(pred)
+                x=x_list[0]
+                x = self.norm(x)    # 前面少了这步呀！！
+                x = x.reshape(B, F, J, -1)
+                x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
+                if return_rep:
+                    return x
+                x = self.head(x)
+                intermediate_list.append(x)
                 return intermediate_list
             else:  # if self.cho_branch==0 and self.run_mode=="eval"
+                x=x_list[0]
+                x = self.norm(x)    # 前面少了这步呀！！
+                x = x.reshape(B, F, J, -1)
                 x = self.pre_logits(x)         # [B, F, J, dim_feat]->[B, F, J, dim_rep]
                 if return_rep:
                     return x
@@ -602,17 +650,17 @@ class DSTformer(nn.Module):
                         x = x_st * alpha[:,:,0:1] + x_ts * alpha[:,:,1:2]
                     else:  
                         x = (x_st + x_ts)*0.5
-            elif self.cho_branch==2:  # "seq-st-st"
+            elif self.branch_size>=self.cho_branch and self.cho_branch==2:  # "seq-st-st"
                 for idx, blk in enumerate(self.blocks_st):
                     x = blk(x, F)
-            elif self.cho_branch==3:  # "seq-ts-ts"
+            elif self.branch_size>=self.cho_branch and self.cho_branch==3:  # "seq-ts-ts"
                 for idx, blk in enumerate(self.blocks_ts):
                     x = blk(x, F)
-            elif self.cho_branch==4:  # "seq-tt-ss"
+            elif self.branch_size>=self.cho_branch and self.cho_branch==4:  # "seq-tt-ss"
                 for idx, (blk0, blk1) in enumerate(zip(self.blocks_sstt1, self.blocks_sstt2)):
                     x = blk0(x, F)
                     x = blk1(x, F)
-            elif self.cho_branch==5:  # "seq-ss-tt"
+            elif self.branch_size>=self.cho_branch and self.cho_branch==5:  # "seq-ss-tt"
                 for idx, (blk0, blk1) in enumerate(zip(self.blocks_ttss1, self.blocks_ttss2)):
                     x = blk0(x, F)
                     x = blk1(x, F)               

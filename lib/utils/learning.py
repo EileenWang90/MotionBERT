@@ -78,8 +78,10 @@ def partial_train_layers(model, partial_list):
 
 def load_backbone(args):
     model_backbone = DSTformer(dim_in=3, dim_out=3, dim_feat=args.dim_feat, dim_rep=args.dim_rep, 
-                               depth=args.depth, num_heads=args.num_heads, mlp_ratio=args.mlp_ratio, norm_layer=partial(nn.LayerNorm, eps=1e-6), 
-                               maxlen=args.maxlen, num_joints=args.num_joints, 
-                               res_scale_init_values=args.res_scale_init_values, layer_scale_init_values=args.layer_scale_init_values,
+                               depth=args.depth, num_heads=args.num_heads, mlp_ratio=args.mlp_ratio, 
+                               num_joints=args.num_joints, maxlen=args.maxlen, norm_layer=partial(nn.LayerNorm, eps=1e-6), 
+                               att_fuse=args.att_fuse, res_scale_init_values=args.res_scale_init_values, layer_scale_init_values=args.layer_scale_init_values,
                                intermediate=args.intermediate, run_mode=args.run_mode, branch_size=args.branch_size, cho_branch=args.cho_branch)  # st_mode1=args.st_mode1, st_mode2=args.st_mode2, 
     return model_backbone
+
+#no qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., 

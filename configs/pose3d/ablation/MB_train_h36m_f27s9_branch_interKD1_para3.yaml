@@ -7,18 +7,18 @@ partial_train: null
 # Traning 
 epochs: 120
 checkpoint_frequency: 30
-batch_size: 1024  # 32 2048 1024
+batch_size: 384  # 384 1024
 dropout: 0.0
 learning_rate: 0.0005
 weight_decay: 0.01
 lr_decay: 0.99
 
 # Model
-maxlen: 9
-dim_feat: 128  # 256
+maxlen: 27
+dim_feat: 256  # 256 
 mlp_ratio: 4
-depth: 3
-dim_rep: 256  # 512
+depth: 5
+dim_rep: 512  # 512
 num_heads: 8
 att_fuse: True
 res_scale_init_values: [null, null, null, null, null] #[1.0, 1.0, 1.0, 1.0, 1.0]
@@ -27,16 +27,16 @@ layer_scale_init_values: [null, null, null, null, null]
 # st_mode2: "stage_t"
 intermediate: True
 run_mode: "train"  # "para" "seq-st-st" "seq-ts-ts" "seq-tt-ss" "seq-ss-tt"  !!!bugs
-branch_size: 5
-cho_branch: -2
-strict: False
+branch_size: 1
+cho_branch: 0
+strict: True
 
 # Data
-data_root: data/motion3d/MB3D_f9s3/
+data_root: data/motion3d/MB3D_f27s9/
 subset_list: [H36M-SH]
 dt_file: h36m_sh_conf_cam_source_final.pkl
-clip_len: 9
-data_stride: 3
+clip_len: 27
+data_stride: 9
 rootrel: True
 sample_stride: 1
 num_joints: 17
@@ -50,7 +50,7 @@ lambda_lv: 0.0
 lambda_lg: 0.0
 lambda_a: 0.0
 lambda_av: 0.0
-lambda_KD: 2.0
+lambda_KD: 0.0
 
 # Augmentation
 synthetic: False
